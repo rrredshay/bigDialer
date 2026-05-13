@@ -59,7 +59,7 @@ class SettingsActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnPrivacyPolicy).setOnClickListener {
             val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
-            intent.data = android.net.Uri.parse("https://rrredshay.github.io/BigDialer/privacy-policy.html")
+            intent.data = android.net.Uri.parse("https://rrredshay.github.io/bigDiler/privacy-policy.html")
             startActivity(intent)
         }
     }
