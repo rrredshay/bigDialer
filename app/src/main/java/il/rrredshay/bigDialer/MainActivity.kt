@@ -21,12 +21,16 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.TextViewCompat
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 
 class MainActivity : AppCompatActivity() {
 
@@ -71,31 +75,24 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         
-        val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
-        setSupportActionBar(toolbar)
-        supportActionBar?.setDisplayShowTitleEnabled(false)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { v, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            insets
+        }
 
         storageService = StorageService(this)
         contactManager = ContactManager(this)
         gridLayout = findViewById(R.id.gridLayout)
+
+        findViewById<FloatingActionButton>(R.id.fabSettings).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
     }
 
     override fun onResume() {
         super.onResume()
         setupGrid()
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.main_menu, menu)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == R.id.action_settings) {
-            startActivity(Intent(this, SettingsActivity::class.java))
-            return true
-        }
-        return super.onOptionsItemSelected(item)
     }
 
     private fun setupGrid() {
@@ -259,10 +256,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkAndOpenPicker() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+            showContactsDisclosure()
         } else {
             openContactPicker()
         }
+    }
+
+    private fun showContactsDisclosure() {
+        AlertDialog.Builder(this)
+            .setTitle("גישה לאנשי קשר")
+            .setMessage("אפליקציה זו זקוקה לגישה לאנשי הקשר שלך כדי לאפשר לך לבחור מספרים ולהגדיר אותם ככפתורי חיוג מהיר. אנשי הקשר שלך לא נאספים או מועברים לשום שרת.")
+            .setPositiveButton("הבנתי") { _, _ ->
+                requestPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+            }
+            .setNegativeButton("ביטול", null)
+            .show()
     }
 
     private fun openContactPicker() {
