@@ -15,8 +15,9 @@
             android:layout_height="wrap_content"
             android:text="Grid Configuration"
             android:textColor="#FFFFFF"
-            android:textSize="22sp"
-            android:textStyle="bold" />
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:fontFamily="sans-serif-medium" />
 
         <TextView
             android:layout_width="wrap_content"

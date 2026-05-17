@@ -9,11 +9,16 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.SeekBar
 import android.widget.TextView
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.widget.addTextChangedListener
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
@@ -24,6 +29,7 @@ class ContactEditActivity : AppCompatActivity() {
     private lateinit var contactManager: ContactManager
     
     private var index: Int = -1
+    private var isSetEdit: Boolean = false
     private var name: String = ""
     private var number: String = ""
     private var label: String? = null
@@ -38,8 +44,9 @@ class ContactEditActivity : AppCompatActivity() {
     private lateinit var previewName: TextView
     private lateinit var previewLabel: TextView
 
-    private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+    private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let {
+            contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             photoUri = it.toString()
             updatePreview()
         }
@@ -55,6 +62,7 @@ class ContactEditActivity : AppCompatActivity() {
                     number = contactInfo.phoneNumber
                     photoUri = contactInfo.photoUri
                     label = contactInfo.phoneLabel
+                    findViewById<EditText>(R.id.etDisplayName).setText(name)
                     updatePreview()
                 }
             }
@@ -62,29 +70,51 @@ class ContactEditActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_contact_edit)
+
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { v, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            insets
+        }
 
         storageService = StorageService(this)
         contactManager = ContactManager(this)
         
         index = intent.getIntExtra("index", -1)
+        isSetEdit = intent.getBooleanExtra("isSetEdit", false)
         name = intent.getStringExtra("name") ?: ""
-        number = intent.getStringExtra("number") ?: ""
-        label = intent.getStringExtra("label")
-        photoUri = intent.getStringExtra("photoUri")
         
-        selectedBgColor = storageService.getButtonBgColor(index)
-        selectedTextColor = storageService.getButtonTextColor(index)
-        selectedAlpha = storageService.getButtonImageAlphaInt(index)
+        if (!isSetEdit) {
+            number = intent.getStringExtra("number") ?: ""
+            label = intent.getStringExtra("label")
+            photoUri = intent.getStringExtra("photoUri")
+        }
+        
+        selectedBgColor = if (isSetEdit) storageService.getSetBgColor(index) else storageService.getButtonBgColor(index)
+        selectedTextColor = if (isSetEdit) storageService.getSetTextColor(index) else storageService.getButtonTextColor(index)
+        selectedAlpha = if (isSetEdit) 100 else storageService.getButtonImageAlphaInt(index)
 
         previewCard = findViewById(R.id.previewCard)
         previewImage = findViewById(R.id.previewImage)
         previewName = findViewById(R.id.previewName)
         previewLabel = findViewById(R.id.previewLabel)
+        
+        val etName = findViewById<EditText>(R.id.etDisplayName)
+        etName.setText(name)
+        etName.addTextChangedListener {
+            name = it.toString()
+            updatePreview()
+        }
+
+        if (isSetEdit) {
+            setupSetEditMode()
+        }
 
         findViewById<Button>(R.id.btnChangeImage).setOnClickListener {
-            pickImageLauncher.launch("image/*")
+            pickImageLauncher.launch(arrayOf("image/*"))
         }
 
         findViewById<Button>(R.id.btnChangeContact).setOnClickListener {
@@ -93,18 +123,27 @@ class ContactEditActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnResetContact).setOnClickListener {
-            name = ""
-            number = ""
-            photoUri = null
-            label = null
-            selectedBgColor = Color.parseColor("#000080")
-            selectedTextColor = Color.WHITE
-            selectedAlpha = 50
+            if (isSetEdit) {
+                name = if (index == 1) "מועדפים" else "סט $index"
+                selectedBgColor = Color.parseColor("#000080")
+                selectedTextColor = Color.WHITE
+            } else {
+                name = ""
+                number = ""
+                photoUri = null
+                label = null
+                selectedBgColor = Color.parseColor("#000080")
+                selectedTextColor = Color.WHITE
+                selectedAlpha = 50
+            }
+            etName.setText(name)
             updatePreview()
         }
 
         findViewById<Button>(R.id.btnSaveContact).setOnClickListener {
-            if (name.isBlank() && number.isBlank()) {
+            if (isSetEdit) {
+                storageService.saveSetMetadata(index, name, selectedBgColor, selectedTextColor)
+            } else if (name.isBlank() && number.isBlank()) {
                 storageService.deleteContact(index)
             } else {
                 storageService.saveContact(index, name, number, photoUri, label)
@@ -134,13 +173,26 @@ class ContactEditActivity : AppCompatActivity() {
         updatePreview()
     }
 
+    private fun setupSetEditMode() {
+        findViewById<View>(R.id.btnChangeContact).visibility = View.GONE
+        findViewById<View>(R.id.btnChangeImage).visibility = View.GONE
+        findViewById<View>(R.id.sbImageAlpha).parent?.let { (it as? View)?.visibility = View.GONE }
+        findViewById<TextView>(R.id.previewLabel).visibility = View.GONE
+        findViewById<ImageView>(R.id.previewImage).visibility = View.GONE
+    }
+
     private fun updatePreview() {
         previewCard.setCardBackgroundColor(selectedBgColor)
         previewName.setTextColor(selectedTextColor)
         previewLabel.setTextColor(selectedTextColor)
-        previewName.text = if (name.isNotBlank()) name else "שם איש קשר"
+        previewName.text = if (name.isNotBlank()) name else (if (isSetEdit) "שם סט" else "שם איש קשר")
         previewLabel.text = label ?: ""
         
+        if (isSetEdit) {
+            previewImage.visibility = View.GONE
+            return
+        }
+
         if (!photoUri.isNullOrBlank()) {
             try {
                 previewImage.setImageURI(Uri.parse(photoUri))

@@ -15,11 +15,13 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -72,6 +74,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         
@@ -88,11 +91,80 @@ class MainActivity : AppCompatActivity() {
         findViewById<FloatingActionButton>(R.id.fabSettings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
+
+        findViewById<Button>(R.id.btnOpenDialer).setOnClickListener {
+            val intent = Intent(Intent.ACTION_DIAL)
+            startActivity(intent)
+        }
+
+        setupSets()
     }
 
     override fun onResume() {
         super.onResume()
+        updateSetsUI()
         setupGrid()
+    }
+
+    private fun setupSets() {
+        val setIds = arrayOf(R.id.btnSet1, R.id.btnSet2, R.id.btnSet3, R.id.btnSet4)
+        for (i in 0 until 4) {
+            val setIndex = i + 1
+            val btn = findViewById<Button>(setIds[i])
+            btn.setOnClickListener {
+                storageService.setCurrentSetIndex(setIndex)
+                updateSetsUI()
+                setupGrid()
+            }
+            
+            btn.setOnTouchListener { _, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        longClickRunnable = Runnable {
+                            val intent = Intent(this, ContactEditActivity::class.java).apply {
+                                putExtra("index", setIndex)
+                                putExtra("isSetEdit", true)
+                                putExtra("name", storageService.getSetName(setIndex))
+                            }
+                            startActivity(intent)
+                        }
+                        handler.postDelayed(longClickRunnable!!, 3000)
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        longClickRunnable?.let { handler.removeCallbacks(it) }
+                    }
+                }
+                false
+            }
+        }
+    }
+
+    private fun updateSetsUI() {
+        val setIds = arrayOf(R.id.btnSet1, R.id.btnSet2, R.id.btnSet3, R.id.btnSet4)
+        val currentIndex = storageService.getCurrentSetIndex()
+        for (i in 0 until 4) {
+            val setIndex = i + 1
+            val btn = findViewById<Button>(setIds[i])
+            val name = storageService.getSetName(setIndex)
+            val bgColor = storageService.getSetBgColor(setIndex)
+            val textColor = storageService.getSetTextColor(setIndex)
+            
+            btn.text = name
+            btn.setTextColor(textColor)
+            btn.setBackgroundColor(bgColor)
+            btn.typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            
+            // Highlight selected set
+            if (setIndex == currentIndex) {
+                btn.alpha = 1.0f
+                btn.scaleX = 1.05f
+                btn.scaleY = 1.05f
+            } else {
+                btn.alpha = 0.6f
+                btn.scaleX = 1.0f
+                btn.scaleY = 1.0f
+            }
+        }
     }
 
     private fun setupGrid() {
@@ -118,7 +190,7 @@ class MainActivity : AppCompatActivity() {
                 columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
                 setMargins(4, 4, 4, 4)
             }
-            radius = 8f * resources.displayMetrics.density
+            radius = 12f * resources.displayMetrics.density
             cardElevation = 4f * resources.displayMetrics.density
         }
 
@@ -149,10 +221,14 @@ class MainActivity : AppCompatActivity() {
                 1f
             )
             gravity = Gravity.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            TextViewCompat.setAutoSizeTextTypeWithDefaults(
-                this, TextViewCompat.AUTO_SIZE_TEXT_TYPE_UNIFORM
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setLineSpacing(0f, 0.9f)
+            // Prevent breaking words and auto-size instead
+            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                this, 8, 20, 1, TextViewCompat.AUTO_SIZE_TEXT_TYPE_UNIFORM
             )
+            // Use simple break strategy to avoid mid-word breaks if possible
+            breakStrategy = android.graphics.text.LineBreaker.BREAK_STRATEGY_SIMPLE
         }
         textLayout.addView(nameTv)
 
@@ -162,29 +238,41 @@ class MainActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
             gravity = Gravity.CENTER
-            textSize = 14f
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            textSize = 13f
+            maxLines = 1
         }
         textLayout.addView(labelTv)
 
         updateButtonUI(card, nameTv, labelTv, imageView, index)
 
         card.setOnClickListener {
-            onButtonClick(index)
+            // Check for double/accidental fast clicks
+            // We use touch listener for the 0.1s delay requirement
         }
 
+        var touchDownTime = 0L
         card.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    touchDownTime = System.currentTimeMillis()
                     longClickRunnable = Runnable {
                         onButtonLongClick3s(index)
                     }
                     handler.postDelayed(longClickRunnable!!, 3000)
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                MotionEvent.ACTION_UP -> {
+                    longClickRunnable?.let { handler.removeCallbacks(it) }
+                    val duration = System.currentTimeMillis() - touchDownTime
+                    if (duration >= 100 && duration < 3000) {
+                        onButtonClick(index)
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
                     longClickRunnable?.let { handler.removeCallbacks(it) }
                 }
             }
-            false
+            true
         }
 
         return card
